@@ -1,0 +1,127 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "memory:recall",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "tools/memory/recall_turn_context.py",
+        "--query",
+        "${input:memoryQuery}",
+        "--limit",
+        "3"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "memory:guarded-command",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tools/memory/run_memory_guard.ps1",
+        "-SessionId",
+        "${input:memorySession}",
+        "-UserRequest",
+        "${input:memoryRequest}",
+        "-Summary",
+        "${input:memorySummary}",
+        "-Outcome",
+        "${input:memoryOutcome}",
+        "-QueryMemory",
+        "${input:memoryQuery}",
+        "-RunCommand",
+        "python -c \"print('replace this with your real agent wrapper')\""
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "memory:import-jira",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "tools/memory/fetch_jira_to_memory.py",
+        "--jql",
+        "${input:jiraJql}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "memory:import-confluence",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "tools/memory/fetch_confluence_to_memory.py",
+        "--space-id",
+        "${input:confluenceSpaceId}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "memory:import-git-connexall",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "tools/memory/export_git_repository_to_memory.py",
+        "--repo-path",
+        "${input:gitConnexallRepoPath}",
+        "--name",
+        "${input:gitConnexallRepoName}"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "memorySession",
+      "type": "promptString",
+      "description": "Session identifier",
+      "default": "copilot-session"
+    },
+    {
+      "id": "memoryRequest",
+      "type": "promptString",
+      "description": "User request summary"
+    },
+    {
+      "id": "memorySummary",
+      "type": "promptString",
+      "description": "Work summary"
+    },
+    {
+      "id": "memoryOutcome",
+      "type": "promptString",
+      "description": "Outcome"
+    },
+    {
+      "id": "memoryQuery",
+      "type": "promptString",
+      "description": "Memory recall query"
+    },
+    {
+      "id": "jiraJql",
+      "type": "promptString",
+      "description": "Jira JQL query",
+      "default": "project = MYPROJECT ORDER BY updated DESC"
+    },
+    {
+      "id": "confluenceSpaceId",
+      "type": "promptString",
+      "description": "Confluence space id"
+    },
+    {
+      "id": "gitConnexallRepoPath",
+      "type": "promptString",
+      "description": "Local path to git.connexall.com repository checkout"
+    },
+    {
+      "id": "gitConnexallRepoName",
+      "type": "promptString",
+      "description": "Logical source name for the git repository",
+      "default": "my-git-repo"
+    }
+  ]
+}
