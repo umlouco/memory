@@ -5,9 +5,9 @@ import json
 import sys
 
 from chroma_memory import (
-    embed_text,
-    get_embedding_provider,
-    get_local_onnx_runtime_details,
+    get_embedding_function,
+    DEFAULT_LM_STUDIO_API_BASE,
+    DEFAULT_LM_STUDIO_MODEL,
 )
 
 
@@ -16,20 +16,24 @@ def main() -> int:
     parser.add_argument(
         "--probe-text",
         default="embedding runtime probe",
-        help="Text used to force lazy embedding session initialization.",
+        help="Text used to test the embedding endpoint.",
     )
     args = parser.parse_args()
 
-    provider = get_embedding_provider()
+    ef = get_embedding_function()
     details: dict[str, object] = {
-        "embedding_provider": provider,
+        "embedding_provider": "lm_studio",
+        "api_base": DEFAULT_LM_STUDIO_API_BASE,
+        "model_name": DEFAULT_LM_STUDIO_MODEL,
     }
 
-    if provider == "local_onnx":
-        embed_text(args.probe_text)
-        details.update(get_local_onnx_runtime_details())
-    else:
-        details["message"] = "Detailed runtime inspection is currently only available for MEMORY_EMBEDDING_PROVIDER=local_onnx."
+    try:
+        result = ef([args.probe_text])
+        details["probe_success"] = True
+        details["embedding_dimensions"] = len(result[0]) if result else None
+    except Exception as exc:
+        details["probe_success"] = False
+        details["probe_error"] = str(exc)
 
     json.dump(details, sys.stdout, indent=2)
     sys.stdout.write("\n")

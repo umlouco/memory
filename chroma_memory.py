@@ -1,36 +1,21 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import re
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import chromadb
-import onnxruntime as ort
-from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = ROOT_DIR / ".chroma"
-DEFAULT_COLLECTION_BASE = "chat_memory"
-TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9_./:-]+")
-EMBEDDING_DIMENSIONS = 64
-DEFAULT_EMBEDDING_PROVIDER = "local_onnx"
-DEFAULT_OPENAI_EMBEDDING_MODEL = "text-embedding-3-large"
-DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
-_LOCAL_ONNX_EMBEDDER: ONNXMiniLM_L6_V2 | None = None
-GPU_PROVIDER_TOKENS = {
-    "cudaexecutionprovider",
-    "dmlexecutionprovider",
-    "tensorrtexecutionprovider",
-    "rocmexecutionprovider",
-    "coremlexecutionprovider",
-}
+DEFAULT_COLLECTION_NAME = "agent_memory"
+DEFAULT_LM_STUDIO_API_BASE = "http://localhost:1234/v1"
+DEFAULT_LM_STUDIO_MODEL = "qwen3-embedding-0.6b"
 
 
 @dataclass
@@ -46,6 +31,18 @@ def _normalize_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(item) for item in value if str(item).strip()]
     return [str(value)]
+
+
+def get_embedding_function() -> OpenAIEmbeddingFunction:
+    """Return an OpenAIEmbeddingFunction pointing at the local LM Studio instance."""
+    api_base = os.getenv("LM_STUDIO_API_BASE", DEFAULT_LM_STUDIO_API_BASE)
+    model_name = os.getenv("LM_STUDIO_MODEL", DEFAULT_LM_STUDIO_MODEL)
+    api_key = os.getenv("LM_STUDIO_API_KEY", "lm-studio")
+    return OpenAIEmbeddingFunction(
+        api_key=api_key,
+        api_base=api_base,
+        model_name=model_name,
+    )
 
 
 def _repo_name(root_dir: Path) -> str:
@@ -70,174 +67,8 @@ def _git_branch(root_dir: Path) -> str:
     return content[:12] if content else "unknown"
 
 
-def _stable_hash(token: str) -> int:
-    value = 2166136261
-    for char in token.encode("utf-8", errors="ignore"):
-        value ^= char
-        value = (value * 16777619) & 0xFFFFFFFF
-    return value
-
-
-def embed_text_local(text: str, dimensions: int = EMBEDDING_DIMENSIONS) -> list[float]:
-    vector = [0.0] * dimensions
-    tokens = TOKEN_PATTERN.findall(text.lower())
-
-    if not tokens:
-        vector[0] = 1.0
-        return vector
-
-    for token in tokens:
-        hashed = _stable_hash(token)
-        index = hashed % dimensions
-        sign = -1.0 if hashed & 1 else 1.0
-        vector[index] += sign
-
-    norm = math.sqrt(sum(value * value for value in vector))
-    if norm == 0:
-        vector[0] = 1.0
-        norm = 1.0
-
-    return [value / norm for value in vector]
-
-
-def get_embedding_provider() -> str:
-    return os.getenv("MEMORY_EMBEDDING_PROVIDER", DEFAULT_EMBEDDING_PROVIDER).strip().lower()
-
-
-def _env_flag(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def get_onnx_available_providers() -> list[str]:
-    return list(ort.get_available_providers())
-
-
-def get_onnx_preferred_providers() -> list[str]:
-    configured = os.getenv("MEMORY_ONNX_PREFERRED_PROVIDERS", "").strip()
-    if configured:
-        return [item.strip() for item in configured.split(",") if item.strip()]
-
-    available = get_onnx_available_providers()
-    preferred: list[str] = []
-
-    for candidate in (
-        "DmlExecutionProvider",
-        "CUDAExecutionProvider",
-        "TensorrtExecutionProvider",
-        "ROCMExecutionProvider",
-        "CoreMLExecutionProvider",
-        "CPUExecutionProvider",
-    ):
-        if candidate in available and candidate not in preferred:
-            preferred.append(candidate)
-
-    return preferred or ["CPUExecutionProvider"]
-
-
-def require_onnx_gpu() -> bool:
-    return _env_flag("MEMORY_ONNX_REQUIRE_GPU", default=False)
-
-
-def _is_gpu_provider(provider_name: str) -> bool:
-    return provider_name.strip().lower() in GPU_PROVIDER_TOKENS
-
-
-def get_local_onnx_runtime_details() -> dict[str, Any]:
-    embedder = get_local_onnx_embedder()
-    model = embedder.model
-    providers = list(model.get_providers())
-    return {
-        "available_providers": get_onnx_available_providers(),
-        "preferred_providers": get_onnx_preferred_providers(),
-        "session_providers": providers,
-        "provider_options": model.get_provider_options(),
-        "gpu_active": any(_is_gpu_provider(provider) for provider in providers),
-        "gpu_required": require_onnx_gpu(),
-    }
-
-
-def get_default_collection_name(provider: str | None = None) -> str:
-    resolved_provider = provider or get_embedding_provider()
-    return f"{DEFAULT_COLLECTION_BASE}_{resolved_provider}"
-
-
-def get_openai_embedding_model() -> str:
-    requested = os.getenv("OPENAI_EMBEDDING_MODEL", DEFAULT_OPENAI_EMBEDDING_MODEL).strip()
-    if requested.lower().startswith("gpt-4.1"):
-        raise ValueError(
-            "gpt-4.1 is not an embeddings model. Use an embeddings model such as text-embedding-3-large."
-        )
-    return requested
-
-
-def embed_text_openai(text: str) -> list[float]:
-    model = get_openai_embedding_model()
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required when MEMORY_EMBEDDING_PROVIDER=openai")
-
-    base_url = os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL).rstrip("/")
-    request_body = json.dumps({"input": text, "model": model}).encode("utf-8")
-    request = urllib.request.Request(
-        url=f"{base_url}/embeddings",
-        data=request_body,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-        },
-        method="POST",
-    )
-
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            response_data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"OpenAI embeddings request failed: HTTP {exc.code} {details}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"OpenAI embeddings request failed: {exc.reason}") from exc
-
-    data = response_data.get("data") or []
-    if not data or "embedding" not in data[0]:
-        raise RuntimeError("OpenAI embeddings response did not include an embedding vector")
-
-    return [float(value) for value in data[0]["embedding"]]
-
-
-def get_local_onnx_embedder() -> ONNXMiniLM_L6_V2:
-    global _LOCAL_ONNX_EMBEDDER
-    if _LOCAL_ONNX_EMBEDDER is None:
-        preferred_providers = get_onnx_preferred_providers()
-        _LOCAL_ONNX_EMBEDDER = ONNXMiniLM_L6_V2(preferred_providers=preferred_providers)
-    return _LOCAL_ONNX_EMBEDDER
-
-
-def embed_text_local_onnx(text: str) -> list[float]:
-    embedder = get_local_onnx_embedder()
-    result = [float(value) for value in embedder([text])[0]]
-    if require_onnx_gpu():
-        runtime_details = get_local_onnx_runtime_details()
-        if not runtime_details["gpu_active"]:
-            raise RuntimeError(
-                "MEMORY_ONNX_REQUIRE_GPU=true but the ONNX embedding session did not bind a GPU execution provider. "
-                f"Available providers: {runtime_details['available_providers']}; "
-                f"session providers: {runtime_details['session_providers']}"
-            )
-    return result
-
-
-def embed_text(text: str) -> list[float]:
-    provider = get_embedding_provider()
-    if provider == "local":
-        return embed_text_local(text)
-    if provider == "local_onnx":
-        return embed_text_local_onnx(text)
-    if provider == "openai":
-        return embed_text_openai(text)
-    raise ValueError(f"Unsupported MEMORY_EMBEDDING_PROVIDER: {provider}")
+def get_default_collection_name() -> str:
+    return DEFAULT_COLLECTION_NAME
 
 
 def get_client(db_path: Path | str = DEFAULT_DB_PATH) -> chromadb.PersistentClient:
@@ -251,7 +82,12 @@ def get_collection(
     collection_name: str | None = None,
 ):
     resolved_name = collection_name or get_default_collection_name()
-    return client.get_or_create_collection(name=resolved_name, metadata={"description": "Chat memory"})
+    ef = get_embedding_function()
+    return client.get_or_create_collection(
+        name=resolved_name,
+        embedding_function=ef,
+        metadata={"hnsw:space": "cosine"},
+    )
 
 
 def build_record(payload: dict[str, Any], root_dir: Path = ROOT_DIR) -> MemoryRecord:
@@ -304,7 +140,7 @@ def build_record(payload: dict[str, Any], root_dir: Path = ROOT_DIR) -> MemoryRe
         "user_request": normalized_payload["user_request"][:500],
         "summary": normalized_payload["summary"][:500],
         "outcome": normalized_payload["outcome"][:500],
-        "embedding_provider": get_embedding_provider(),
+        "embedding_provider": "lm_studio",
         "files_read_count": len(normalized_payload["files_read"]),
         "files_changed_count": len(normalized_payload["files_changed"]),
         "knowledge_source_count": len(normalized_payload["knowledge_sources"]),
@@ -323,12 +159,10 @@ def upsert_payload(
     resolved_collection_name = collection_name or get_default_collection_name()
     collection = get_collection(client, resolved_collection_name)
     record = build_record(payload)
-    embedding = embed_text(record.document)
 
     collection.upsert(
         ids=[record.record_id],
         documents=[record.document],
-        embeddings=[embedding],
         metadatas=[record.metadata],
     )
 
@@ -356,7 +190,7 @@ def query_memory(
     collection = get_collection(client, collection_name or get_default_collection_name())
     where = {"session_id": session_id} if session_id else None
     result = collection.query(
-        query_embeddings=[embed_text(query)],
+        query_texts=[query],
         n_results=limit,
         where=where,
         include=["documents", "metadatas", "distances"],
