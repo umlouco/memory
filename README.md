@@ -9,7 +9,6 @@ This directory provides a concrete Chroma-backed memory path for agent turns in 
 - Effective collection name includes the provider, for example `chat_memory_local_onnx`
 - Persistence is local to this machine and survives future sessions unless `.chroma/` is deleted.
 - Raw transcript captures are stored in `storage/app/memory-transcripts/`
-- External normalized source exports are stored in `storage/app/memory-external/`
 - Reindexing chunks long payload, knowledge, and transcript records with overlap for better retrieval
 
 ## Embeddings Provider
@@ -106,12 +105,6 @@ How Chroma querying works in this repository:
 4. The raw database read and vector search are not accelerated by the ONNX model.
 5. GPU only helps on the embedding computation step, both when writing records and when embedding the query text for retrieval.
 
-Build a requirement contract before planning or implementation:
-
-```text
-python tools/memory/build_requirement_contract.py --query "workflow csv import export" --limit 12
-```
-
 Recall a short pre-turn brief:
 
 ```text
@@ -124,17 +117,10 @@ Raw semantic recall is not enough for implementation safety. Use Chroma in these
 
 1. Recall gate
    Run `enforce_memory_recall.py` first so the turn cannot proceed without consulting memory.
-2. Requirement contract
-   Run `build_requirement_contract.py` against authoritative sources like `requirements`, `confluence`, and `jira`.
-   Treat its output as a checklist of obligations, not as optional background.
-3. Plan against coverage
-   Every implementation plan should map work items to requirement-contract lines with explicit status such as `addressed`, `deferred`, or `open-question`.
-4. Implement and verify
-   Tests and review notes should cite the requirement lines they satisfy.
-5. Persist outcome
+2. Implement and verify
+   Tests and review notes should cite the recalled context they satisfy.
+3. Persist outcome
    Write the final memory payload only after the delivered work and any unmet requirements are recorded.
-
-This architecture closes the gap where an agent recalls relevant context but never promotes it into a mandatory execution contract. A missed item like CSV import/export should now appear as an `unaddressed` requirement before coding begins.
 
 Fail closed unless Chroma recall runs first:
 
@@ -184,40 +170,10 @@ Reindex only saved transcript text:
 python tools/memory/reindex_memory_store.py --transcripts-only
 ```
 
-Reindex only external normalized sources:
-
-```text
-python tools/memory/reindex_memory_store.py --external-only
-```
-
 Reset `.chroma` and rebuild everything in one command:
 
 ```text
 powershell -ExecutionPolicy Bypass -File tools/memory/rebuild_memory_store.ps1
-```
-
-Export a local git repository into normalized memory records:
-
-```text
-python tools/memory/export_git_repository_to_memory.py --repo-path /path/to/repo
-```
-
-Fetch Jira issues into normalized memory records:
-
-```text
-python tools/memory/fetch_jira_to_memory.py --jql "project = MYPROJECT ORDER BY updated DESC"
-```
-
-Fetch Confluence pages into normalized memory records:
-
-```text
-python tools/memory/fetch_confluence_to_memory.py --space-id 123456
-```
-
-After exporting or fetching external sources, run:
-
-```text
-python tools/memory/reindex_memory_store.py --external-only
 ```
 
 Fail-closed enforcement:
@@ -277,8 +233,5 @@ The repository includes a VS Code task template in `tools/memory/tasks.vscode.js
 
 - `memory:recall` for pre-turn recall
 - `memory:guarded-command` for a completion-gated command
-- `memory:import-jira` for Jira issue import
-- `memory:import-confluence` for Confluence page import
-- `memory:import-git-connexall` for local `git.connexall.com` repository export
 
 It is a template rather than a live editor config because many environments ignore or override shared `.vscode` settings.

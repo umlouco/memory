@@ -37,41 +37,6 @@
         "python -c \"print('replace this with your real agent wrapper')\""
       ],
       "problemMatcher": []
-    },
-    {
-      "label": "memory:import-jira",
-      "type": "shell",
-      "command": "python",
-      "args": [
-        "tools/memory/fetch_jira_to_memory.py",
-        "--jql",
-        "${input:jiraJql}"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "memory:import-confluence",
-      "type": "shell",
-      "command": "python",
-      "args": [
-        "tools/memory/fetch_confluence_to_memory.py",
-        "--space-id",
-        "${input:confluenceSpaceId}"
-      ],
-      "problemMatcher": []
-    },
-    {
-      "label": "memory:import-git-connexall",
-      "type": "shell",
-      "command": "python",
-      "args": [
-        "tools/memory/export_git_repository_to_memory.py",
-        "--repo-path",
-        "${input:gitConnexallRepoPath}",
-        "--name",
-        "${input:gitConnexallRepoName}"
-      ],
-      "problemMatcher": []
     }
   ],
   "inputs": [
@@ -100,28 +65,6 @@
       "id": "memoryQuery",
       "type": "promptString",
       "description": "Memory recall query"
-    },
-    {
-      "id": "jiraJql",
-      "type": "promptString",
-      "description": "Jira JQL query",
-      "default": "project = MYPROJECT ORDER BY updated DESC"
-    },
-    {
-      "id": "confluenceSpaceId",
-      "type": "promptString",
-      "description": "Confluence space id"
-    },
-    {
-      "id": "gitConnexallRepoPath",
-      "type": "promptString",
-      "description": "Local path to git.connexall.com repository checkout"
-    },
-    {
-      "id": "gitConnexallRepoName",
-      "type": "promptString",
-      "description": "Logical source name for the git repository",
-      "default": "my-git-repo"
     }
   ]
 }

@@ -14,7 +14,6 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_PAYLOAD_DIR = ROOT_DIR / "storage" / "app" / "memory-payloads"
 DEFAULT_TRANSCRIPT_DIR = ROOT_DIR / "storage" / "app" / "memory-transcripts"
 DEFAULT_KNOWLEDGE_DIR = ROOT_DIR / ".knowledge"
-DEFAULT_EXTERNAL_DIR = ROOT_DIR / "storage" / "app" / "memory-external"
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 DEFAULT_CHUNK_SIZE = 900
 DEFAULT_CHUNK_OVERLAP = 180
@@ -235,56 +234,6 @@ def load_transcript_payloads(transcript_dir: Path) -> list[dict]:
     return payloads
 
 
-def chunk_external_record(record: dict[str, Any]) -> list[dict]:
-    text_parts = [
-        str(record.get("user_request") or ""),
-        str(record.get("summary") or ""),
-        str(record.get("outcome") or ""),
-        "\n".join(str(item) for item in record.get("decisions") or []),
-        "\n".join(str(item) for item in record.get("files_read") or []),
-        "\n".join(str(item) for item in record.get("knowledge_sources") or []),
-    ]
-    chunks = split_large_text("\n\n".join(part for part in text_parts if part.strip()))
-    if len(chunks) <= 1:
-        return [record]
-
-    results: list[dict] = []
-    base_turn_id = str(record.get("turn_id") or "external")
-    decisions = [str(item) for item in record.get("decisions") or []]
-    for chunk_index, chunk_body in enumerate(chunks, start=1):
-        chunk_record = dict(record)
-        chunk_record["turn_id"] = f"{base_turn_id}-chunk-{chunk_index:03d}"
-        chunk_record["summary"] = collapse_whitespace(chunk_body, 500)
-        chunk_record["decisions"] = decisions + [f"External chunk {chunk_index}"]
-        results.append(chunk_record)
-    return results
-
-
-def load_external_payloads(external_dir: Path) -> list[dict]:
-    payloads: list[dict] = []
-    if not external_dir.exists():
-        return payloads
-
-    for path in sorted(external_dir.rglob("*.json")):
-        content = json.loads(path.read_text(encoding="utf-8-sig"))
-        if isinstance(content, dict) and "records" in content:
-            records = content["records"]
-        elif isinstance(content, list):
-            records = content
-        else:
-            records = [content]
-
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            record.setdefault("source_type", "external")
-            record.setdefault("source_name", path.stem)
-            record.setdefault("session_id", f"{record['source_type']}-import")
-            payloads.extend(chunk_external_record(record))
-
-    return payloads
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Reindex the Chroma memory store from saved payloads and knowledge files.")
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH), help="Persistent Chroma database path.")
@@ -292,38 +241,31 @@ def main() -> int:
     parser.add_argument("--payload-dir", default=str(DEFAULT_PAYLOAD_DIR), help="Directory of saved turn payload JSON files.")
     parser.add_argument("--transcript-dir", default=str(DEFAULT_TRANSCRIPT_DIR), help="Directory of saved raw transcript files.")
     parser.add_argument("--knowledge-dir", default=str(DEFAULT_KNOWLEDGE_DIR), help="Directory of markdown knowledge files.")
-    parser.add_argument("--external-dir", default=str(DEFAULT_EXTERNAL_DIR), help="Directory of normalized external source JSON files.")
     parser.add_argument("--payloads-only", action="store_true", help="Reindex saved turn payloads only.")
     parser.add_argument("--knowledge-only", action="store_true", help="Reindex knowledge markdown only.")
     parser.add_argument("--transcripts-only", action="store_true", help="Reindex saved transcript text only.")
-    parser.add_argument("--external-only", action="store_true", help="Reindex normalized external sources only.")
     args = parser.parse_args()
 
-    only_flags = [args.payloads_only, args.knowledge_only, args.transcripts_only, args.external_only]
+    only_flags = [args.payloads_only, args.knowledge_only, args.transcripts_only]
     if sum(1 for flag in only_flags if flag) > 1:
-        raise SystemExit("Use at most one of --payloads-only, --knowledge-only, --transcripts-only, or --external-only.")
+        raise SystemExit("Use at most one of --payloads-only, --knowledge-only, or --transcripts-only.")
 
-    imported = {"payload_records": 0, "knowledge_records": 0, "transcript_records": 0, "external_records": 0}
+    imported = {"payload_records": 0, "knowledge_records": 0, "transcript_records": 0}
 
-    if not args.knowledge_only and not args.transcripts_only and not args.external_only:
+    if not args.knowledge_only and not args.transcripts_only:
         for payload in load_payloads(Path(args.payload_dir)):
             upsert_payload(payload, db_path=Path(args.db_path), collection_name=args.collection)
             imported["payload_records"] += 1
 
-    if not args.payloads_only and not args.transcripts_only and not args.external_only:
+    if not args.payloads_only and not args.transcripts_only:
         for payload in load_knowledge_payloads(Path(args.knowledge_dir)):
             upsert_payload(payload, db_path=Path(args.db_path), collection_name=args.collection)
             imported["knowledge_records"] += 1
 
-    if not args.payloads_only and not args.knowledge_only and not args.external_only:
+    if not args.payloads_only and not args.knowledge_only:
         for payload in load_transcript_payloads(Path(args.transcript_dir)):
             upsert_payload(payload, db_path=Path(args.db_path), collection_name=args.collection)
             imported["transcript_records"] += 1
-
-    if not args.payloads_only and not args.knowledge_only and not args.transcripts_only:
-        for payload in load_external_payloads(Path(args.external_dir)):
-            upsert_payload(payload, db_path=Path(args.db_path), collection_name=args.collection)
-            imported["external_records"] += 1
 
     imported["collection"] = args.collection
     imported["db_path"] = str(Path(args.db_path).resolve())
