@@ -95,6 +95,14 @@ if (-not $SkipHooks) {
         @{
             event   = "userPromptSubmit"
             command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py"
+        },
+        @{
+            event   = "stop"
+            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
+        },
+        @{
+            event   = "subagentStop"
+            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py"
         }
     )
 

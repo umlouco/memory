@@ -52,6 +52,14 @@ Then add these hooks to your workspace's `.vscode/settings.json`:
     {
       "event": "userPromptSubmit",
       "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_log_prompt.py"
+    },
+    {
+      "event": "stop",
+      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_stop.py"
+    },
+    {
+      "event": "subagentStop",
+      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_subagent_stop.py"
     }
   ]
 }
@@ -61,14 +69,16 @@ Replace `D:/git/chat-memory` with the actual path where you cloned this repo.
 
 ## How It Works
 
-Two Copilot hooks fire on every `userPromptSubmit`:
+Four Copilot hooks fire at different points in the conversation lifecycle:
 
-| Hook | Purpose |
-|------|---------|
-| `hook_get_context.py` | Queries Chroma for related past turns and injects a `<memory_context>` block |
-| `hook_log_prompt.py` | Writes the current prompt into Chroma for future recall |
+| Hook | Event | Purpose |
+|------|-------|---------||
+| `hook_get_context.py` | `userPromptSubmit` | Queries Chroma for related past turns and injects a `<memory_context>` block |
+| `hook_log_prompt.py` | `userPromptSubmit` | Writes the current prompt into Chroma for future recall |
+| `hook_on_stop.py` | `stop` | Persists the full context window (responses, files, tool calls) when a turn ends |
+| `hook_on_subagent_stop.py` | `subagentStop` | Persists subagent context (prompt, result, files changed) when a subagent finishes |
 
-Both hooks are silent — they never block or fail your prompt.
+All hooks are silent — they never block or fail your prompt.
 
 ## Configuration
 
