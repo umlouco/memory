@@ -44,24 +44,18 @@ Then add these hooks to your workspace's `.vscode/settings.json`:
 
 ```json
 {
-  "github.copilot.chat.hooks": [
-    {
-      "event": "userPromptSubmit",
-      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_get_context.py"
-    },
-    {
-      "event": "userPromptSubmit",
-      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_log_prompt.py"
-    },
-    {
-      "event": "stop",
-      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_stop.py"
-    },
-    {
-      "event": "subagentStop",
-      "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_subagent_stop.py"
-    }
-  ]
+  "github.copilot.chat.hooks": {
+    "userPromptSubmit": [
+      { "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_get_context.py" },
+      { "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_log_prompt.py" }
+    ],
+    "stop": [
+      { "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_stop.py" }
+    ],
+    "subagentStop": [
+      { "command": "D:/git/chat-memory/.venv/Scripts/python.exe D:/git/chat-memory/hook_on_subagent_stop.py" }
+    ]
+  }
 }
 ```
 

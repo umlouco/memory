@@ -79,32 +79,33 @@ if (-not $SkipHooks) {
             $cleaned = ($raw -split "`n" | ForEach-Object {
                 $_ -replace '^\s*//.*', ''
             }) -join "`n"
-            try { $settings = $cleaned | ConvertFrom-Json -AsHashtable } catch { $settings = @{} }
+            try {
+                $parsed = $cleaned | ConvertFrom-Json
+                # Convert PSCustomObject to hashtable (PS 5.1 compat)
+                $settings = @{}
+                $parsed.PSObject.Properties | ForEach-Object { $settings[$_.Name] = $_.Value }
+            } catch {
+                $settings = @{}
+            }
         }
     }
 
     # Normalise chat-memory path for JSON (forward slashes)
     $hookDir = $chatMemoryDir.Replace('\', '/')
 
-    # Build the hooks array
-    $hooks = @(
-        @{
-            event   = "userPromptSubmit"
-            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_get_context.py"
-        },
-        @{
-            event   = "userPromptSubmit"
-            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py"
-        },
-        @{
-            event   = "stop"
-            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
-        },
-        @{
-            event   = "subagentStop"
-            command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py"
-        }
-    )
+    # Build hooks object keyed by event name (VS Code schema)
+    $hooks = @{
+        userPromptSubmit = @(
+            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_get_context.py" },
+            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py" }
+        )
+        stop = @(
+            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py" }
+        )
+        subagentStop = @(
+            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py" }
+        )
+    }
 
     $settings["github.copilot.chat.hooks"] = $hooks
 
