@@ -6,7 +6,7 @@
       "type": "shell",
       "command": "python",
       "args": [
-        "tools/memory/recall_turn_context.py",
+        "recall_turn_context.py",
         "--query",
         "${input:memoryQuery}",
         "--limit",
@@ -22,7 +22,7 @@
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        "tools/memory/run_memory_guard.ps1",
+        "run_memory_guard.ps1",
         "-SessionId",
         "${input:memorySession}",
         "-UserRequest",

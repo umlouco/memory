@@ -38,7 +38,7 @@ Notes:
 Inspect the live runtime binding:
 
 ```text
-python tools/memory/inspect_embedding_runtime.py
+python inspect_embedding_runtime.py
 ```
 
 If you want OpenAI embeddings instead, set:
@@ -88,13 +88,13 @@ If `knowledge_sources` is omitted, the script records all markdown files current
 Write memory:
 
 ```text
-python tools/memory/upsert_chat_memory.py --input <payload.json>
+python upsert_chat_memory.py --input <payload.json>
 ```
 
 Query memory:
 
 ```text
-python tools/memory/query_chat_memory.py --query "approval workflow" --session <session_id>
+python query_chat_memory.py --query "approval workflow" --session <session_id>
 ```
 
 How Chroma querying works in this repository:
@@ -108,7 +108,7 @@ How Chroma querying works in this repository:
 Recall a short pre-turn brief:
 
 ```text
-python tools/memory/recall_turn_context.py --query "approval workflow" --session <session_id> --limit 3
+python recall_turn_context.py --query "approval workflow" --session <session_id> --limit 3
 ```
 
 ## Recommended Agent Architecture
@@ -125,67 +125,67 @@ Raw semantic recall is not enough for implementation safety. Use Chroma in these
 Fail closed unless Chroma recall runs first:
 
 ```text
-python tools/memory/enforce_memory_recall.py --query "approval workflow" --run powershell -Command "Get-Date"
+python enforce_memory_recall.py --query "approval workflow" --run powershell -Command "Get-Date"
 ```
 
 Filter recall by session prefix and date range:
 
 ```text
-python tools/memory/recall_turn_context.py --query "approval workflow" --session-prefix transcript- --date-from 2026-03-01 --date-to 2026-03-01 --limit 5
+python recall_turn_context.py --query "approval workflow" --session-prefix transcript- --date-from 2026-03-01 --date-to 2026-03-01 --limit 5
 ```
 
 Filter recall to one source:
 
 ```text
-python tools/memory/recall_turn_context.py --query "bulk editing" --source requirements --limit 3
+python recall_turn_context.py --query "bulk editing" --source requirements --limit 3
 ```
 
 Filter recall by source type:
 
 ```text
-python tools/memory/recall_turn_context.py --query "future transcripts automatically" --source-type transcript --limit 3
+python recall_turn_context.py --query "future transcripts automatically" --source-type transcript --limit 3
 ```
 
 Reindex the fresh store from saved turn payloads and `.knowledge` files:
 
 ```text
-python tools/memory/reindex_memory_store.py
+python reindex_memory_store.py
 ```
 
 Reindex only saved turn payloads:
 
 ```text
-python tools/memory/reindex_memory_store.py --payloads-only
+python reindex_memory_store.py --payloads-only
 ```
 
 Reindex only `.knowledge` markdown:
 
 ```text
-python tools/memory/reindex_memory_store.py --knowledge-only
+python reindex_memory_store.py --knowledge-only
 ```
 
 Reindex only saved transcript text:
 
 ```text
-python tools/memory/reindex_memory_store.py --transcripts-only
+python reindex_memory_store.py --transcripts-only
 ```
 
 Reset `.chroma` and rebuild everything in one command:
 
 ```text
-powershell -ExecutionPolicy Bypass -File tools/memory/rebuild_memory_store.ps1
+powershell -ExecutionPolicy Bypass -File rebuild_memory_store.ps1
 ```
 
 Fail-closed enforcement:
 
 ```text
-python tools/memory/enforce_memory_write.py --input <payload.json>
+python enforce_memory_write.py --input <payload.json>
 ```
 
 Optional wrapped command:
 
 ```text
-python tools/memory/enforce_memory_write.py --input <payload.json> --run python -m pytest
+python enforce_memory_write.py --input <payload.json> --run python -m pytest
 ```
 
 The wrapper returns a non-zero exit code if the wrapped command fails, but it still attempts the Chroma write first so the failure is preserved in memory.
@@ -193,7 +193,7 @@ The wrapper returns a non-zero exit code if the wrapped command fails, but it st
 PowerShell launcher with automatic payload generation:
 
 ```text
-powershell -ExecutionPolicy Bypass -File tools/memory/run_memory_guard.ps1 `
+powershell -ExecutionPolicy Bypass -File run_memory_guard.ps1 `
   -SessionId copilot-session `
   -UserRequest "Review workflow approval logic" `
   -QueryMemory "workflow approval" `
@@ -210,7 +210,7 @@ If you explicitly want recall limited to one prior session, add:
 Transcript file capture:
 
 ```text
-powershell -ExecutionPolicy Bypass -File tools/memory/run_memory_guard.ps1 `
+powershell -ExecutionPolicy Bypass -File run_memory_guard.ps1 `
   -SessionId copilot-session `
   -TranscriptPath .\chat.txt `
   -RunCommand "Get-Date"
@@ -219,7 +219,7 @@ powershell -ExecutionPolicy Bypass -File tools/memory/run_memory_guard.ps1 `
 Transcript stdin capture:
 
 ```text
-Get-Content .\chat.txt -Raw | powershell -ExecutionPolicy Bypass -File tools/memory/run_memory_guard.ps1 `
+Get-Content .\chat.txt -Raw | powershell -ExecutionPolicy Bypass -File run_memory_guard.ps1 `
   -SessionId copilot-session `
   -TranscriptFromStdin `
   -RunCommand "Get-Date"
@@ -229,7 +229,7 @@ If `-Summary` or `-Outcome` are omitted, they are generated automatically. If `-
 
 ## Runner Template
 
-The repository includes a VS Code task template in `tools/memory/tasks.vscode.json` with:
+The repository includes a VS Code task template in `tasks.vscode.json` with:
 
 - `memory:recall` for pre-turn recall
 - `memory:guarded-command` for a completion-gated command

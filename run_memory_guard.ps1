@@ -61,7 +61,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$repoRoot = $PSScriptRoot
 Set-Location $repoRoot
 
 if (-not $SessionId) {
@@ -88,7 +88,7 @@ New-Item -ItemType Directory -Force -Path $transcriptStoreDir | Out-Null
 $transcriptStorePath = Join-Path $transcriptStoreDir "$SessionId-$TurnId.txt"
 
 $buildArgs = @(
-    "tools/memory/build_turn_payload.py",
+    "build_turn_payload.py",
     "--session-id", $SessionId,
     "--turn-id", $TurnId,
     "--output", $payloadPath
@@ -120,7 +120,7 @@ if ($TranscriptFromStdin) {
 }
 
 if ($QueryMemory) {
-    $recallArgs = @("tools/memory/recall_turn_context.py", "--query", $QueryMemory, "--limit", "$RecallLimit")
+    $recallArgs = @("recall_turn_context.py", "--query", $QueryMemory, "--limit", "$RecallLimit")
     if ($RecallSession) {
         $recallArgs += @("--session", $RecallSession)
     }
@@ -132,7 +132,7 @@ if ($RequireRecallFirst) {
     if (-not $QueryMemory) {
         throw "-RequireRecallFirst requires -QueryMemory."
     }
-    $command += @("python", "tools/memory/enforce_memory_recall.py", "--query", $QueryMemory, "--limit", "$RecallLimit")
+    $command += @("python", "enforce_memory_recall.py", "--query", $QueryMemory, "--limit", "$RecallLimit")
     if ($RecallSession) {
         $command += @("--session", $RecallSession)
     }
@@ -149,7 +149,7 @@ if ($RequireRecallFirst) {
         $command += $Run
     }
 } else {
-    $command += @("python", "tools/memory/enforce_memory_write.py", "--input", $payloadPath)
+    $command += @("python", "enforce_memory_write.py", "--input", $payloadPath)
     if ($RunCommand) {
         $command += "--run"
         $command += "powershell"
@@ -164,5 +164,5 @@ if ($RequireRecallFirst) {
 & $command[0] @($command[1..($command.Count - 1)])
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-python tools/memory/enforce_memory_write.py --input $payloadPath
+python enforce_memory_write.py --input $payloadPath
 exit $LASTEXITCODE
