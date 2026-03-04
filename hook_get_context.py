@@ -1,7 +1,7 @@
 """UserPromptSubmit hook — query Chroma memory and inject relevant context.
 
-Called by Claude Code on every user prompt submit.
-Outputs a <memory_context> block to stdout, which Claude Code injects
+Called by GitHub Copilot Chat on every user prompt submit.
+Outputs a <memory_context> block to stdout, which Copilot injects
 into the conversation before the model processes the prompt.
 Never blocks the prompt (always exits 0).
 """

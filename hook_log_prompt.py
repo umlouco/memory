@@ -1,6 +1,6 @@
 """UserPromptSubmit hook — write the incoming prompt to Chroma memory.
 
-Called by Claude Code on every user prompt submit.
+Called by GitHub Copilot Chat on every user prompt submit.
 Never blocks the prompt (always exits 0).
 """
 from __future__ import annotations
