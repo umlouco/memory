@@ -1,11 +1,12 @@
-<#
+﻿<#
 .SYNOPSIS
     Set up chat-memory for a VS Code workspace.
 
 .DESCRIPTION
-    Creates a Python venv, installs dependencies, wires Copilot hooks into
-    the target workspace's .vscode/settings.json, and verifies the LM Studio
-    embedding endpoint is reachable.
+    Creates a Python venv, installs dependencies, writes Copilot hooks into
+    the target workspace's .github/hooks/hooks.json, adds MCP server settings
+    into .vscode/settings.json, and verifies the LM Studio embedding endpoint
+    is reachable.
 
 .PARAMETER TargetWorkspace
     Path to the VS Code workspace folder to wire hooks into.
@@ -15,7 +16,7 @@
     Skip venv creation (use if you already have one).
 
 .PARAMETER SkipHooks
-    Skip writing Copilot hook configuration.
+    Skip writing Copilot hook configuration and MCP settings.
 
 .EXAMPLE
     .\setup.ps1 -TargetWorkspace D:\git\my-project
@@ -31,16 +32,58 @@ param(
 $ErrorActionPreference = 'Stop'
 $chatMemoryDir = $PSScriptRoot
 
-# ── Resolve target workspace ─────────────────────────────────────────────────
+function ConvertTo-HashtableRecursive {
+    param([Parameter(ValueFromPipeline = $true)]$InputObject)
+
+    if ($null -eq $InputObject) {
+        return $null
+    }
+
+    if ($InputObject -is [hashtable]) {
+        $out = @{}
+        foreach ($key in $InputObject.Keys) {
+            $out[$key] = ConvertTo-HashtableRecursive $InputObject[$key]
+        }
+        return $out
+    }
+
+    if ($InputObject -is [System.Collections.IDictionary]) {
+        $out = @{}
+        foreach ($key in $InputObject.Keys) {
+            $out[$key] = ConvertTo-HashtableRecursive $InputObject[$key]
+        }
+        return $out
+    }
+
+    if ($InputObject -is [System.Management.Automation.PSCustomObject]) {
+        $out = @{}
+        foreach ($prop in $InputObject.PSObject.Properties) {
+            $out[$prop.Name] = ConvertTo-HashtableRecursive $prop.Value
+        }
+        return $out
+    }
+
+    if (($InputObject -is [System.Collections.IEnumerable]) -and ($InputObject -isnot [string])) {
+        $items = @()
+        foreach ($item in $InputObject) {
+            $items += ,(ConvertTo-HashtableRecursive $item)
+        }
+        return $items
+    }
+
+    return $InputObject
+}
+
 if (-not $TargetWorkspace) {
     $TargetWorkspace = Read-Host "Enter the path to the VS Code workspace to wire hooks into"
 }
 $TargetWorkspace = (Resolve-Path $TargetWorkspace).Path
+
 Write-Host "`n=== Chat Memory Setup ===" -ForegroundColor Cyan
 Write-Host "Chat-memory dir : $chatMemoryDir"
 Write-Host "Target workspace: $TargetWorkspace`n"
 
-# ── 1. Python venv ───────────────────────────────────────────────────────────
+# 1. Python venv
 $venvDir = Join-Path $chatMemoryDir ".venv"
 $pythonExe = Join-Path $venvDir "Scripts\python.exe"
 
@@ -61,9 +104,9 @@ if (-not $SkipVenv) {
     Write-Host "[2/4] Skipping dependency install (--SkipVenv)." -ForegroundColor DarkGray
 }
 
-# ── 2. Copilot hooks ─────────────────────────────────────────────────────────
+# 2. Copilot hooks + MCP settings
 if (-not $SkipHooks) {
-    Write-Host "[3/4] Configuring Copilot chat hooks..." -ForegroundColor Yellow
+    Write-Host "[3/4] Configuring Copilot hooks + MCP settings..." -ForegroundColor Yellow
 
     $vscodeDir = Join-Path $TargetWorkspace ".vscode"
     if (-not (Test-Path $vscodeDir)) {
@@ -75,48 +118,102 @@ if (-not $SkipHooks) {
     if (Test-Path $settingsPath) {
         $raw = Get-Content $settingsPath -Raw -ErrorAction SilentlyContinue
         if ($raw) {
-            # Strip single-line comments (// ...) for JSON parsing
             $cleaned = ($raw -split "`n" | ForEach-Object {
                 $_ -replace '^\s*//.*', ''
             }) -join "`n"
             try {
                 $parsed = $cleaned | ConvertFrom-Json
-                # Convert PSCustomObject to hashtable (PS 5.1 compat)
-                $settings = @{}
-                $parsed.PSObject.Properties | ForEach-Object { $settings[$_.Name] = $_.Value }
+                $settings = ConvertTo-HashtableRecursive $parsed
             } catch {
                 $settings = @{}
             }
         }
     }
 
-    # Normalise chat-memory path for JSON (forward slashes)
     $hookDir = $chatMemoryDir.Replace('\', '/')
 
-    # Build hooks object keyed by event name (VS Code schema)
-    $hooks = @{
-        userPromptSubmit = @(
-            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_get_context.py" },
-            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py" }
-        )
-        stop = @(
-            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py" }
-        )
-        subagentStop = @(
-            @{ command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py" }
-        )
+    $hooksObject = @{
+        hooks = @{
+            UserPromptSubmit = @(
+                @{
+                    type = "command"
+                    command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_get_context.py"
+                },
+                @{
+                    type = "command"
+                    command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py"
+                }
+            )
+            Stop = @(
+                @{
+                    type = "command"
+                    command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
+                }
+            )
+            SubagentStop = @(
+                @{
+                    type = "command"
+                    command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py"
+                }
+            )
+            PreCompact = @(
+                @{
+                    type = "command"
+                    command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
+                }
+            )
+        }
     }
 
-    $settings["github.copilot.chat.hooks"] = $hooks
+    $hooksJson = $hooksObject | ConvertTo-Json -Depth 10
+
+    $hooksDir = Join-Path $TargetWorkspace ".github\hooks"
+    if (-not (Test-Path $hooksDir)) {
+        New-Item -ItemType Directory -Path $hooksDir -Force | Out-Null
+    }
+    $hooksPath = Join-Path $hooksDir "hooks.json"
+    Set-Content -Path $hooksPath -Value $hooksJson -Encoding UTF8
+    Write-Host "       Wrote hooks to $hooksPath" -ForegroundColor Green
+
+    # Optional compatibility path requested by some local workflows.
+    $hookDirLegacy = Join-Path $TargetWorkspace ".github\hook"
+    if (-not (Test-Path $hookDirLegacy)) {
+        New-Item -ItemType Directory -Path $hookDirLegacy -Force | Out-Null
+    }
+    $hooksPathLegacy = Join-Path $hookDirLegacy "hooks.json"
+    Set-Content -Path $hooksPathLegacy -Value $hooksJson -Encoding UTF8
+    Write-Host "       Wrote hooks to $hooksPathLegacy" -ForegroundColor Green
+
+    if ($settings.ContainsKey("github.copilot.chat.hooks")) {
+        $settings.Remove("github.copilot.chat.hooks")
+    }
+
+    if (-not $settings.ContainsKey("mcp") -or $null -eq $settings["mcp"]) {
+        $settings["mcp"] = @{}
+    } else {
+        $settings["mcp"] = ConvertTo-HashtableRecursive $settings["mcp"]
+    }
+
+    if (-not $settings["mcp"].ContainsKey("servers") -or $null -eq $settings["mcp"]["servers"]) {
+        $settings["mcp"]["servers"] = @{}
+    } else {
+        $settings["mcp"]["servers"] = ConvertTo-HashtableRecursive $settings["mcp"]["servers"]
+    }
+
+    $settings["mcp"]["servers"]["memory"] = @{
+        type = "stdio"
+        command = "npx"
+        args = @("-y", "@modelcontextprotocol/server-memory")
+    }
 
     $settingsJson = $settings | ConvertTo-Json -Depth 10
     Set-Content -Path $settingsPath -Value $settingsJson -Encoding UTF8
-    Write-Host "       Wrote hooks to $settingsPath" -ForegroundColor Green
+    Write-Host "       Wrote MCP settings to $settingsPath" -ForegroundColor Green
 } else {
-    Write-Host "[3/4] Skipping hook configuration (--SkipHooks)." -ForegroundColor DarkGray
+    Write-Host "[3/4] Skipping hook and MCP configuration (--SkipHooks)." -ForegroundColor DarkGray
 }
 
-# ── 3. Verify LM Studio ──────────────────────────────────────────────────────
+# 3. Verify LM Studio
 Write-Host "[4/4] Verifying LM Studio embedding endpoint..." -ForegroundColor Yellow
 try {
     $probeOutput = & $pythonExe (Join-Path $chatMemoryDir "inspect_embedding_runtime.py") 2>&1
