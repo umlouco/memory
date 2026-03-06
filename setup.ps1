@@ -184,9 +184,32 @@ if (-not $SkipHooks) {
     Set-Content -Path $hooksPathLegacy -Value $hooksJson -Encoding UTF8
     Write-Host "       Wrote hooks to $hooksPathLegacy" -ForegroundColor Green
 
-    if ($settings.ContainsKey("github.copilot.chat.hooks")) {
-        $settings.Remove("github.copilot.chat.hooks")
+    $settings["github.copilot.chat.hooks"] = @{
+        userPromptSubmit = @(
+            @{
+                command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_get_context.py"
+            },
+            @{
+                command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_log_prompt.py"
+            }
+        )
+        stop = @(
+            @{
+                command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
+            }
+        )
+        subagentStop = @(
+            @{
+                command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_subagent_stop.py"
+            }
+        )
+        preCompact = @(
+            @{
+                command = "$hookDir/.venv/Scripts/python.exe $hookDir/hook_on_stop.py"
+            }
+        )
     }
+    Write-Host "       Wrote VS Code hooks to $settingsPath (github.copilot.chat.hooks)" -ForegroundColor Green
 
     if (-not $settings.ContainsKey("mcp") -or $null -eq $settings["mcp"]) {
         $settings["mcp"] = @{}
